@@ -1,0 +1,303 @@
+<!doctype html>
+ <html>
+  <head>
+   <meta charset='utf-8'>
+   <meta content='' name='author'>
+   <meta content='' name='description'>
+   <meta name='viewport' content='width=device-width,initial-scale=1.0'>
+   <title>toyoko-inn.app</title>
+   <link href='' rel='icon'>
+   <link href='css/animate/3.7.0.min.css' rel='stylesheet'>
+   <link href='css/semantic-ui/2.4.0.min.css' rel='stylesheet'>
+   <style>
+    @import url('codepen/emoji.css');
+
+    .ui.fixed.menu+.ui.grid {
+        padding-top: 3.75rem;
+    }
+    .ui.table td,
+    .ui.table thead th {
+        padding:0;
+        vertical-align:middle;
+        text-align: center;
+    }
+    .ui.table tr:first-child {
+      background:#0cf;
+    }
+    .ui table th:nth-child(1), .ui table td:nth-child(1) {
+      width:29%;
+    }
+    #config {
+      padding:0;
+    }
+    .dg.main, .dg.main .close-button {
+      width:100% !important;
+    }
+    .dg.main .property-name {
+      text-align:left;
+    }
+  </style>
+   <script src='js/jquery/3.3.1.min.js'></script>
+   <script src='js/jquery/timer/0.7.1.min.js'></script>
+   <script src='css/semantic-ui/2.4.0.min.js'></script>
+   <script src='js/dat-gui/0.7.2.min.js'></script>
+   <script>
+     $(function(){
+
+
+      var tm = {
+        notify:30,
+      }
+
+
+      var webspeech = function(){
+        this.speech = null;
+        this.start = function(){
+          this.speech = new SpeechSynthesisUtterance();
+          this.speech.volume = 1;
+          this.speech.rate   = 1;
+          this.speech.pitch  = 1;
+          this.speech.text   = "";
+          this.speech.lang   = "ja-JP";
+          this.speech.isPauseing = false;
+          this._set_voice();
+        };
+        this._set_voice = function(){
+          var self = this;
+          speechSynthesis.onvoiceschanged = function(){
+            var voices = speechSynthesis.getVoices();
+            
+            for (var i = 0; i < voices.length; i++) {
+              if (voices[i].lang == "ja-JP"){
+                self.speech.voice = voices[i];
+              }
+            }
+          };
+        };
+        this.talk = function(str){
+          this.speech.text = str;
+          speechSynthesis.speak(this.speech);
+        };
+      }
+
+       var emoji =
+       {
+         face: {},
+         elem: $('.ui#emotion'),
+         current_name: null,
+         change: function(id) {
+           this.elem.empty()
+           this.elem.append(this.face[id])
+           this.current_name = id
+         },
+         load: function(container) {
+           $(container).find('template').each((i,template) => {
+             this.face[template.id] = template.innerHTML
+           })
+         }
+       }
+
+       var emojiType = {
+         rank: {
+          'haha':  {timeup:3, message:'目指しましょう!!!'},
+          'yay':   {timeup:5, message:'ならグッド!!!'},
+          'wow':   {timeup:8, message:'よし!!!'},
+          'angry': {timeup:12,message:'マジ？...'},
+          'sad':   {timeup:999, message:'...'},
+         },
+         get:function(sec) {
+           var rankKey = Object.keys(this.rank).find(
+             key => sec < this.rank[key].timeup*60);
+
+           return { name:rankKey, data:this.rank[rankKey]}
+         }
+       }
+
+       var message = $('#message')
+       var timerSpeech = new webspeech()
+           timerSpeech.start()
+
+       var table = 
+       {
+         idx:0,
+         elem: $('tbody#timeline'),
+         timers: new Array(1),
+         current_timer : null,
+         get:function(options)
+         {
+           this.idx++;
+           return $('<tr>', {
+              html: [
+                $('<td>', { text: this.idx }),
+                    this.current_timer = $('<td>', { text: 'loading...' }).timer(options)
+              ]
+          });
+         },
+         insert: function()
+         {
+           var td = {
+             timer: this.get({
+              format:   '%M:%S',
+              duration: 10,
+              repeat:   true,
+              callback: (time) => {
+                // don't function(time) {} 
+                var sec = this.current_timer.data('seconds')
+
+                if ((sec % tm.notify) == 0)
+                  timerSpeech.talk(`${sec}秒経過`)
+                
+                var emotion = emojiType.get(sec)
+                message.text(`${emotion.data.timeup}分以内 ${emotion.data.message}`)
+                if (emotion.name != emoji.current_name) {
+                  emoji.change(emotion.name)
+                }
+              }
+             })
+           }
+           
+           this.timers.push(td.timer)
+           this.elem.prepend(
+             td.timer
+           )
+          }
+       }
+
+       emoji.load('#emoji')
+       emoji.change('haha')
+
+
+       var current_timerIsStopped = false;
+
+       $('i#btnStart').on('click',function(event) {
+
+         if (table.current_timer != null)
+          table.current_timer.timer('pause')
+
+         table.insert()
+       })
+
+       function toggle_btnPause()
+       {
+          if (current_timerIsStopped == true)
+            this.removeClass('pause').addClass('play')
+          else
+            this.removeClass('play').addClass('pause')
+       }
+
+       $('i#btnPause').on('click',function(event) {
+           
+           if (table.current_timer == null)
+             return 
+          
+           table.current_timer.timer(
+              (current_timerIsStopped) ? 'resume' : 'pause')
+           current_timerIsStopped = !current_timerIsStopped
+           
+           toggle_btnPause.call($(this))
+       })
+
+
+       var   gui = new dat.GUI({autoPlace:false});
+             gui.add(tm,'notify').min(10).max(120).step(10).name('⌚通知間隔(秒)')
+             gui.add(emojiType.rank.haha,'timeup').min(0.5).max(12).step(0.5).name('😀素晴らしい')
+             gui.add(emojiType.rank.yay,'timeup').min(0.5).max(12).step(0.5).name('😊よくやった')
+             gui.add(emojiType.rank.wow,'timeup').min(0.5).max(12).step(0.5).name('😮よし！')
+             gui.add(emojiType.rank.angry,'timeup').min(0.5).max(12).step(0.5).name('🤔マジ？')
+             gui.add(emojiType.rank.sad,'timeup').min(0.5).max(999).step(0.5).name('😭...')
+
+       $('#config').append(gui.domElement)
+
+
+
+
+       
+     })
+  </script>
+ </head>
+  <body>
+   <div class='ui container'>
+     <div class='ui menu fixed pointing icon'>
+      <a class='item active'><i class='icon orange clock' id='btnStart'></i></a>
+      <div class='right menu'>
+      <div class='ui blue icon attached buttons'>
+          <div class='ui button'>
+            <i class='pause icon' id='btnPause'></i>
+          </div>
+        </div>
+      </div>
+    </div>
+      <div class='ui grid animated bounceInUp'>
+        <div class='row'>
+          <div class='column'>
+            <div class='ui mini attached segment' id='emotion'>
+            </div>
+            <div class="ui mini bottom attached success message" id='message'>
+              ８分以内ならずっと笑顔です
+              </div>
+            <table class='ui orange unstackable sortable celled small table'>
+              <thead>
+                <th>番号</th>
+                <th>秒数</th>
+              </thead>
+              <tbody id='timeline'>
+              </tbody>
+            </table>
+            <div class='ui mini segment' id='config'>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<div id='emoji'>
+  <template id='haha'>
+    <div class="emoji  emoji--haha">
+        <div class="emoji__face">
+          <div class="emoji__eyes"></div>
+          <div class="emoji__mouth">
+            <div class="emoji__tongue"></div>
+          </div>
+        </div>  
+      </div>
+  </template>
+  <template id='yay'>
+    <div class="emoji  emoji--yay">
+      <div class="emoji__face">
+        <div class="emoji__eyebrows"></div>
+        <div class="emoji__mouth"></div>
+      </div>
+    </div>
+  </template>
+  <template id='wow'>
+    <div class="emoji  emoji--wow">
+      <div class="emoji__face">
+        <div class="emoji__eyebrows"></div>
+        <div class="emoji__eyes"></div>
+        <div class="emoji__mouth"></div>
+      </div>
+    </div>
+  </template>
+  <template id='angry'>
+    <div class="emoji  emoji--angry">
+      <div class="emoji__face">
+        <div class="emoji__eyebrows"></div>
+        <div class="emoji__eyes"></div>
+        <div class="emoji__mouth"></div>
+      </div>
+    </div>
+  </template>
+  <template id='sad'>
+      <div class="emoji  emoji--sad">
+        <div class="emoji__face">
+          <div class="emoji__eyebrows"></div>
+          <div class="emoji__eyes"></div>
+          <div class="emoji__mouth"></div>
+        </div>
+      </div>
+    </template>
+ </div>
+ </body>
+</html>
